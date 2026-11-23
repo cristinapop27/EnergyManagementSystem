@@ -1,0 +1,19 @@
+log:
+  level: INFO
+
+accessLog:
+  filePath: "/var/log/traefik/access.log"
+  format: common
+
+api:
+  dashboard: true
+  insecure: true          # dashboard on :8080 without login (dev only)
+
+entryPoints:
+  web:
+    address: ":80"        # all HTTP traffic comes in here
+
+providers:
+  file:
+    directory: "/etc/traefik/dynamic"
+    watch: true

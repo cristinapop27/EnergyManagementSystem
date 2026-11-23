@@ -1,0 +1,214 @@
+name: ems
+
+services:
+  device-db:
+    image: mysql:8.4
+    container_name: device-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DEVICE_DB_NAME}
+      MYSQL_USER: ${DEVICE_DB_USER}
+      MYSQL_PASSWORD: ${DEVICE_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    ports:
+      - "3306:3306"              # dev only, for IntelliJ DB viewer
+    volumes:
+      - device-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks: [ems-net]
+
+  user-db:
+    image: mysql:8.4
+    container_name: user-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${USER_DB_NAME}
+      MYSQL_USER: ${USER_DB_USER}
+      MYSQL_PASSWORD: ${USER_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - user-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks: [ems-net]
+
+  auth-db:
+    image: mysql:8.4
+    container_name: auth-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${AUTH_DB_NAME}
+      MYSQL_USER: ${AUTH_DB_USER}
+      MYSQL_PASSWORD: ${AUTH_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - auth-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks: [ems-net]
+
+  monitoring-db:
+    image: mysql:8.4
+    container_name: monitoring-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MONITORING_DB_NAME}
+      MYSQL_USER: ${MONITORING_DB_USER}
+      MYSQL_PASSWORD: ${MONITORING_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - monitoring-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks: [ems-net]
+
+  device-service:
+    build: ./device-service            # ← uses device-service/Dockerfile
+    image: ems/device-service          # name of the produced image
+    container_name: device-service
+    restart: unless-stopped
+    environment:
+      DB_HOST: device-db
+      DB_PORT: 3306
+      DB_NAME: ${DEVICE_DB_NAME}
+      DB_USER: ${DEVICE_DB_USER}
+      DB_PASSWORD: ${DEVICE_DB_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    depends_on:
+      device-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [ems-net]
+
+  user-service:
+    build: ./user-service              # ← uses user-service/Dockerfile
+    image: ems/user-service
+    container_name: user-service
+    restart: unless-stopped
+    environment:
+      DB_HOST: user-db
+      DB_PORT: 3306                    # 3306 INSIDE the network, not 3307
+      DB_NAME: ${USER_DB_NAME}
+      DB_USER: ${USER_DB_USER}
+      DB_PASSWORD: ${USER_DB_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    depends_on:
+      user-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [ems-net]
+
+  auth-service:
+    build: ./auth-service
+    image: ems/auth-service
+    container_name: auth-service
+    restart: unless-stopped
+    environment:
+      DB_HOST: auth-db
+      DB_PORT: 3306
+      DB_NAME: ${AUTH_DB_NAME}
+      DB_USER: ${AUTH_DB_USER}
+      DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    depends_on:
+      auth-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [ems-net]
+
+
+  monitoring-service:
+    build: ./monitoring-service
+    image: ems/monitoring-service
+    container_name: monitoring-service
+    restart: unless-stopped
+    environment:
+      DB_HOST: monitoring-db
+      DB_PORT: 3306
+      DB_NAME: ${MONITORING_DB_NAME}
+      DB_USER: ${MONITORING_DB_USER}
+      DB_PASSWORD: ${MONITORING_DB_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    depends_on:
+      monitoring-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [ems-net]
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [ems-net]
+
+  frontend:
+    build: ./frontend
+    image: ems/frontend
+    container_name: frontend
+    restart: unless-stopped
+    networks: [ems-net]
+
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"        # the single entry point
+      - "8080:8080"    # Traefik dashboard
+    volumes:
+      - ./reverse-proxy/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./reverse-proxy/dynamic:/etc/traefik/dynamic:ro
+      - ./reverse-proxy/logs:/var/log/traefik
+    depends_on:
+      - user-service
+      - device-service
+    networks: [ems-net]
+
+volumes:
+  device-data:
+  user-data:
+  auth-data:
+  monitoring-data:
+
+networks:
+  ems-net:
+    driver: bridge

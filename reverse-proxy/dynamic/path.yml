@@ -1,0 +1,75 @@
+http:
+  routers:
+    auth-public-router:
+      rule: "PathPrefix(`/api/auth/login`) || PathPrefix(`/api/auth/register`)"
+      entryPoints: [web]
+      middlewares: [strip-api]
+      service: auth-service
+
+    auth-admin-router:
+      rule: "PathPrefix(`/api/auth/admin`)"
+      entryPoints: [web]
+      middlewares: [jwt-auth, strip-api]
+      service: auth-service
+
+    users-router:
+      rule: "PathPrefix(`/api/users`)"
+      entryPoints: [web]
+      middlewares: [jwt-auth, strip-api]
+      service: user-service
+
+    devices-router:
+      rule: "PathPrefix(`/api/devices`)"
+      entryPoints: [web]
+      middlewares: [jwt-auth, strip-api]
+      service: device-service
+
+    monitoring-router:
+      rule: "PathPrefix(`/api/monitoring`)"
+      entryPoints: [web]
+      middlewares: [jwt-auth, strip-api]
+      service: monitoring-service
+
+    frontend-router:
+      rule: "PathPrefix(`/`)"
+      priority: 1
+      entryPoints: [web]
+      service: frontend
+
+  middlewares:
+    jwt-auth:
+      forwardAuth:
+        address: "http://auth-service:8080/auth/validate"
+        authResponseHeaders:
+          - "X-User-Id"
+          - "X-User-Role"
+
+    strip-api:
+      stripPrefix:
+        prefixes: ["/api"]
+
+  services:
+    auth-service:
+      loadBalancer:
+        servers:
+          - url: "http://auth-service:8080"
+
+    user-service:
+      loadBalancer:
+        servers:
+          - url: "http://user-service:8080"
+
+    device-service:
+      loadBalancer:
+        servers:
+          - url: "http://device-service:8080"
+
+    monitoring-service:
+      loadBalancer:
+        servers:
+          - url: "http://monitoring-service:8080"
+
+    frontend:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:80"
